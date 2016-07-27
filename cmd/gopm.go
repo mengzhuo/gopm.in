@@ -13,6 +13,6 @@ var domain = flag.String("domain", "gopm.in", "The serving domain")
 func main() {
 	flag.Parse()
 	gopm.SetDomain(*domain)
-	http.HandleFunc("/", gopm.MainHandler)
+	http.Handle("/", gopm.Router)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }

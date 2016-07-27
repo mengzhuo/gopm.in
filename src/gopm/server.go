@@ -6,93 +6,16 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
-var repoTmpl *template.Template
+const gitRefsSuffix = ".git/info/refs?service=git-upload-pack"
 
-func httpError(w http.ResponseWriter, code int, content string) {
-}
-
-func MainHandler(w http.ResponseWriter, r *http.Request) {
-	log.Print("URL:", r.URL.Path)
-
-	if _, ok := r.URL.Query()["go-get"]; !ok {
-		APIHandler(w, r)
-		return
-	}
-
-	switch strings.Count(r.URL.Path, "/") {
-	case 1: //  /guess.v1
-		if strings.Contains(r.URL.Path, ".") {
-			GuessHandler(w, r)
-		}
-	case 2: //  /gh/guess.v1
-		SiteHandler(w, r)
-	case 3: //  /gh/mengzhuo/guess.v1
-		fallthrough
-	default:
-		SiteUserHandler(w, r)
-	}
-}
-
-func APIHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "hello world")
-}
-
-func SiteHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "hello world")
-}
-
-func githubHandler(w http.ResponseWriter, r *http.Request, urls []string) {
-	fmt.Fprintf(w, "hello world")
-}
-
-func GuessHandler(w http.ResponseWriter, r *http.Request) {
-}
-
-func SiteUserHandler(w http.ResponseWriter, r *http.Request) {
-
-	urls := strings.SplitN(r.URL.Path[1:], "/", 3)
-
-	if len(urls) != 3 {
-		w.Write([]byte("No valid url"))
-		w.WriteHeader(403)
-		log.Print("urls not enough:", r.URL.Path)
-		return
-	}
-	var meta *MetaImport
-	switch urls[0] {
-	case "gh":
-		fallthrough
-	case "github":
-		meta = &MetaImport{
-			"gopm.in/" + "github/" + strings.Join(urls[1:], "/"),
-			"git",
-			"https://github.com/mengzhuo/bla.git",
-		}
-	case "gc":
-		fallthrough
-	case "google":
-		fallthrough
-	case "googlecode":
-
-	case "bitbucket":
-
-	default:
-		log.Printf("No support site %#v", urls)
-		w.Write([]byte("Not supported site"))
-		w.WriteHeader(404)
-		return
-	}
-
-	data := struct {
-		Meta *MetaImport
-	}{
-		meta,
-	}
-
-	repoTmpl.Execute(w, data)
-}
+var (
+	repoTmpl *template.Template
+	Router   *gin.Engine
+)
 
 func init() {
 	var err error
@@ -100,6 +23,38 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	Router = gin.Default()
+	Router.GET("/favicon.ico", func(ctx *gin.Context) {
+		ctx.Status(200)
+	})
+
+	gb := Router.Group("/github")
+	{
+		gb.GET("/:owner/:repo", githubHandler)
+		gb.GET("/:owner/:repo/.git/info/refs", githubHandler)
+	}
+}
+
+func githubHandler(ctx *gin.Context) {
+
+	repo := ctx.Param("repo")
+	if strings.Count(repo, ".v") != 1 {
+		err := fmt.Errorf("repo:%s is not supported", repo)
+		ctx.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	prefix := []string{ctx.Request.URL.Scheme,
+		cfg.Domain,
+		"github",
+		ctx.Param("owner"),
+		repo,
+	}
+	meta := &MetaImport{
+		VCS:    "git",
+		Prefix: strings.Join(prefix, "/"),
+	}
+	fmt.Println(ctx.Request.RequestURI)
+	ctx.JSON(http.StatusOK, meta)
 }
 
 type MetaImport struct {
